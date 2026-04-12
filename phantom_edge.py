@@ -394,7 +394,8 @@ def get_live_usdc_balance() -> float:
     Falls back to STARTING_BANKROLL ($100) on any failure.
     """
     try:
-        resp    = get_clob_client().get_balance_allowance(params={"asset_type": "COLLATERAL"})
+        from py_clob_client.clob_types import BalanceAllowanceParams, AssetType  # noqa: PLC0415
+        resp    = get_clob_client().get_balance_allowance(params=BalanceAllowanceParams(asset_type=AssetType.COLLATERAL))
         balance = float(resp.get("balance", 0) or 0)
         if balance > 0:
             log.info(f"LIVE: wallet balance ${balance:.2f} USDC")
