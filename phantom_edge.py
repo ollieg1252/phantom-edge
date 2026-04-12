@@ -178,7 +178,7 @@ MAX_CONSEC_LOSSES = 15     # Stop betting after this many consecutive losses
 # ── Live order execution ──────────────────────────────────────────────────────
 # Set LIVE_MODE = True once credentials are configured to place real CLOB orders.
 # The simulation still runs in parallel so you can compare live vs simulated P&L.
-LIVE_MODE        = False    # MUST be True to place real orders
+LIVE_MODE        = True     # MUST be True to place real orders
 LIVE_KELLY_MULT  = 0.25     # Fraction of full Kelly used for live bets (quarter = safest)
 MIN_LIVE_STAKE   = 1.00     # Skip orders smaller than $1 USDC
 MAX_LIVE_STAKE   = 50.00    # Hard cap per order regardless of Kelly sizing
@@ -321,7 +321,6 @@ def get_clob_client():
             host="https://clob.polymarket.com",
             key=POLY_PRIVATE_KEY,
             chain_id=POLYGON,
-            signature_type=0,   # EOA (externally owned account)
         )
         creds = client.create_or_derive_api_creds()
         client.set_api_creds(creds)
