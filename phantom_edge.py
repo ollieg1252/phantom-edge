@@ -310,15 +310,15 @@ def get_clob_client():
         if _clob_client is not None:
             return _clob_client
         try:
-            from py_clob_client.client import ClobClient             # noqa: PLC0415
-            from py_clob_client.constants import CLOB_HOST, POLYGON  # noqa: PLC0415
+            from py_clob_client.client import ClobClient      # noqa: PLC0415
+            from py_clob_client.constants import POLYGON      # noqa: PLC0415
         except ImportError:
             raise RuntimeError("py-clob-client not installed — run: pip install py-clob-client")
         if not POLY_PRIVATE_KEY:
             raise RuntimeError("POLY_PRIVATE_KEY env var not set")
         # Initialise without creds first, then derive L2 API creds from the private key
         client = ClobClient(
-            host=CLOB_HOST,
+            host="https://clob.polymarket.com",
             key=POLY_PRIVATE_KEY,
             chain_id=POLYGON,
             signature_type=0,   # EOA (externally owned account)
