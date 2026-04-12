@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(curl -s http://localhost:5000/api/state)",
+      "Bash(xargs kill:*)",
+      "Bash(pkill -f phantom_edge.py)",
+      "Bash(curl -s http://localhost:8080/api/state)",
+      "Bash(curl -v http://localhost:8080/)",
+      "Bash(curl:*)",
+      "Bash(grep -v \"^\\\\s*$\")",
+      "WebFetch(domain:data.chain.link)",
+      "WebFetch(domain:docs.chain.link)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(caffeinate -i python3 phantom_edge.py)"
+    ]
+  }
+}

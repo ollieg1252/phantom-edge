@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phantom Edge — BTC Market Tracker</title>
+
+  <!-- Chart.js from CDN — no install needed -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    /* ── Global ────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────────────────── */
+    .page { max-width: 1280px; margin: 0 auto; padding: 20px 24px 40px; }
+
+    /* ── Header ─────────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #21262d;
+    }
+    header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #f0883e;
+    }
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #3fb950;
+      box-shadow: 0 0 8px #3fb950;
+      animation: pulse 2s infinite;
+      flex-shrink: 0;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; }
+      50%      { opacity: 0.4; }
+    }
+    #status-bar {
+      font-size: 12px;
+      color: #8b949e;
+      margin-left: auto;
+      text-align: right;
+      max-width: 60%;
+    }
+
+    /* ── Stat cards ─────────────────────────────────────────────────────────── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+    .card-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #8b949e;
+      margin-bottom: 6px;
+    }
+    .card-value {
+      font-size: 26px;
+      font-weight: 700;
+      color: #e6edf3;
+    }
+    .card-sub {
+      font-size: 11px;
+      color: #8b949e;
+      margin-top: 4px;
+    }
+    /* Colour coding */
+    .green  { color: #3fb950; }
+    .orange { color: #f0883e; }
+    .red    { color: #f85149; }
+    .blue   { color: #58a6ff; }
+    .purple { color: #bc8cff; }
+
+    /* ── Two-column mid section ─────────────────────────────────────────────── */
+    .mid-row {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 900px) {
+      .mid-row { grid-template-columns: 1fr; }
+    }
+
+    /* ── Panels / boxes ─────────────────────────────────────────────────────── */
+    .panel {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 10px;
+      padding: 18px 20px;
+    }
+    .panel-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #8b949e;
+      margin-bottom: 14px;
+    }
+
+    /* ── Bankroll chart ─────────────────────────────────────────────────────── */
+    .chart-wrap { position: relative; min-height: 260px; height: auto; }
+
+    /* ── Current window panel ───────────────────────────────────────────────── */
+    .window-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #21262d;
+    }
+    .window-row:last-child { border-bottom: none; }
+    .window-key  { color: #8b949e; font-size: 12px; }
+    .window-val  { font-weight: 600; font-size: 13px; }
+
+    /* ── Win-rate bar ───────────────────────────────────────────────────────── */
+    .bar-wrap {
+      background: #0d1117;
+      border-radius: 6px;
+      height: 10px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.5s ease;
+    }
+    .bar-actual   { background: #3fb950; }
+    .bar-implied  { background: #f0883e; }
+
+    /* ── Trade log table ────────────────────────────────────────────────────── */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 10px;
+      border: 1px solid #21262d;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    thead tr { background: #161b22; }
+    thead th {
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: #8b949e;
+      white-space: nowrap;
+    }
+    tbody tr { border-top: 1px solid #21262d; }
+    tbody tr:nth-child(even) { background: #0f1318; }
+    tbody tr:hover           { background: #1c2128; }
+    td { padding: 8px 12px; white-space: nowrap; }
+    .win-badge  {
+      background: #1a3628; color: #3fb950;
+      border: 1px solid #238636;
+      border-radius: 4px; padding: 2px 7px;
+      font-size: 10px; font-weight: 600;
+    }
+    .loss-badge {
+      background: #2d1118; color: #f85149;
+      border: 1px solid #6e2227;
+      border-radius: 4px; padding: 2px 7px;
+      font-size: 10px; font-weight: 600;
+    }
+    .pnl-pos { color: #3fb950; }
+    .pnl-neg { color: #f85149; }
+
+    /* ── Footer ─────────────────────────────────────────────────────────────── */
+    footer {
+      margin-top: 28px;
+      font-size: 11px;
+      color: #30363d;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header>
+    <div class="dot" id="live-dot"></div>
+    <h1>PHANTOM EDGE</h1>
+    <div id="status-bar">Starting up…</div>
+  </header>
+
+  <!-- ── Stat cards ───────────────────────────────────────────────────────── -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">¼ Kelly Bankroll</div>
+      <div class="card-value green" id="br-quarter">$100.00</div>
+      <div class="card-sub">25% of Kelly stake</div>
+    </div>
+    <div class="card">
+      <div class="card-label">½ Kelly Bankroll</div>
+      <div class="card-value orange" id="br-half">$100.00</div>
+      <div class="card-sub">50% of Kelly stake</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Full Kelly Bankroll</div>
+      <div class="card-value purple" id="br-full">$100.00</div>
+      <div class="card-sub">100% of Kelly stake</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Win Rate</div>
+      <div class="card-value blue" id="win-rate">—</div>
+      <div class="card-sub" id="wins-of">0 of 0 trades</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Implied Prob</div>
+      <div class="card-value" id="implied-prob">—</div>
+      <div class="card-sub">Polymarket avg price</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Uptime</div>
+      <div class="card-value" id="uptime">—</div>
+      <div class="card-sub" id="total-trades">0 total trades</div>
+    </div>
+  </div>
+
+  <!-- ── Protection status ───────────────────────────────────────────────── -->
+  <div id="protection-banner" style="display:none;margin-bottom:14px;padding:12px 16px;
+    background:#2d1118;border:1px solid #6e2227;border-radius:10px;font-size:12px;color:#f85149;">
+    <strong>⚠ DRAWDOWN PROTECTION ACTIVE</strong>
+    <span id="protection-detail" style="margin-left:8px;color:#e6edf3;"></span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px;">
+    <div class="card">
+      <div class="card-label">¼K Drawdown from Peak</div>
+      <div class="card-value" id="dd-quarter">0.0%</div>
+      <div class="card-sub" id="dd-quarter-status">Active</div>
+    </div>
+    <div class="card">
+      <div class="card-label">½K Drawdown from Peak</div>
+      <div class="card-value" id="dd-half">0.0%</div>
+      <div class="card-sub" id="dd-half-status">Active</div>
+    </div>
+    <div class="card">
+      <div class="card-label">K Drawdown from Peak</div>
+      <div class="card-value" id="dd-full">0.0%</div>
+      <div class="card-sub" id="dd-full-status">Active</div>
+    </div>
+  </div>
+
+  <!-- ── Mid row: chart + current window ────────────────────────────────── -->
+  <div class="mid-row">
+
+    <!-- Bankroll chart -->
+    <div class="panel">
+      <div class="panel-title">Bankroll Growth Over Time</div>
+      <div class="chart-wrap">
+        <canvas id="bankroll-chart"></canvas>
+      </div>
+      <!-- Legend -->
+      <div style="display:flex;gap:18px;margin-top:10px;font-size:11px;">
+        <span><span style="color:#3fb950">●</span> ¼ Kelly</span>
+        <span><span style="color:#f0883e">●</span> ½ Kelly</span>
+        <span><span style="color:#bc8cff">●</span> Full Kelly</span>
+      </div>
+    </div>
+
+    <!-- Current window -->
+    <div class="panel">
+      <div class="panel-title">Current 5-Minute Window</div>
+
+      <!-- Progress bar + countdown -->
+      <div style="margin-bottom:18px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#8b949e;margin-bottom:6px;">
+          <span>Window <span id="win-start">—</span></span>
+          <span id="win-elapsed">—</span>
+        </div>
+        <div style="background:#21262d;border-radius:4px;height:7px;overflow:hidden;">
+          <div id="win-progress-bar" style="height:100%;width:0%;transition:width 0.9s linear;background:#3fb950;"></div>
+        </div>
+      </div>
+
+      <!-- Large signal direction -->
+      <div style="text-align:center;padding:18px 0;margin-bottom:16px;background:#161b22;border-radius:8px;">
+        <div style="font-size:11px;color:#8b949e;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase;">30s Signal</div>
+        <div id="win-signal-big" style="font-size:38px;font-weight:700;letter-spacing:3px;color:#8b949e;">—</div>
+        <div id="win-signal-sub" style="font-size:11px;color:#8b949e;margin-top:6px;">Waiting for 30s mark…</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="window-row">
+        <span class="window-key">Polymarket price</span>
+        <span class="window-val" id="win-poly">—</span>
+      </div>
+      <div class="window-row">
+        <span class="window-key">Full Kelly fraction</span>
+        <span class="window-val" id="win-kelly">—</span>
+      </div>
+      <div class="window-row">
+        <span class="window-key">Market source</span>
+        <span class="window-val" id="win-source">—</span>
+      </div>
+
+      <!-- Win-rate vs implied probability bars -->
+      <div style="margin-top:16px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#8b949e;margin-bottom:4px;">
+          <span>Win rate (historical)</span>
+          <span id="bar-wr-label">—</span>
+        </div>
+        <div class="bar-wrap">
+          <div class="bar-fill bar-actual" id="bar-wr" style="width:0%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#8b949e;margin-bottom:4px;margin-top:8px;">
+          <span>Implied prob (Polymarket)</span>
+          <span id="bar-ip-label">—</span>
+        </div>
+        <div class="bar-wrap">
+          <div class="bar-fill bar-implied" id="bar-ip" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.mid-row -->
+
+  <!-- ── Trade log ────────────────────────────────────────────────────────── -->
+  <div class="panel-title" style="margin-bottom:10px;">Trade Log (most recent first)</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>BTC Open</th>
+          <th>Signal</th>
+          <th>Resolved</th>
+          <th>Poly Price</th>
+          <th>Kelly %</th>
+          <th>Result</th>
+          <th>P&L ¼K</th>
+          <th>P&L ½K</th>
+          <th>P&L K</th>
+          <th>BRL ¼K</th>
+          <th>BRL ½K</th>
+          <th>BRL K</th>
+        </tr>
+      </thead>
+      <tbody id="trade-tbody">
+        <tr><td colspan="13" style="text-align:center;color:#8b949e;padding:24px;">
+          Waiting for the first completed trade…
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    Phantom Edge — simulation only. No real money is placed. Refreshes every 5 seconds.
+  </footer>
+
+</div><!-- /.page -->
+
+<script>
+  // ── Chart setup ─────────────────────────────────────────────────────────────
+  const ctx = document.getElementById('bankroll-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: '¼ Kelly',
+          data: [],
+          borderColor: '#3fb950',
+          backgroundColor: 'rgba(63,185,80,0.08)',
+          tension: 0.3,
+          pointRadius: 2,
+          fill: false,
+        },
+        {
+          label: '½ Kelly',
+          data: [],
+          borderColor: '#f0883e',
+          backgroundColor: 'rgba(240,136,62,0.08)',
+          tension: 0.3,
+          pointRadius: 2,
+          fill: false,
+        },
+        {
+          label: 'Full Kelly',
+          data: [],
+          borderColor: '#bc8cff',
+          backgroundColor: 'rgba(188,140,255,0.08)',
+          tension: 0.3,
+          pointRadius: 2,
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      aspectRatio: 3,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#8b949e', maxTicksLimit: 8, font: { size: 10 } },
+          grid:  { color: '#21262d' },
+        },
+        y: {
+          ticks: {
+            color: '#8b949e',
+            callback: v => '$' + v.toFixed(0),
+            font: { size: 10 },
+          },
+          grid: { color: '#21262d' },
+        },
+      },
+    },
+  });
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+
+  function fmt(n, decimals = 2) {
+    return n !== null && n !== undefined ? Number(n).toFixed(decimals) : '—';
+  }
+  function fmtDollar(n) {
+    return n !== null && n !== undefined ? '$' + Number(n).toFixed(2) : '—';
+  }
+  function fmtPct(n) {
+    return n !== null && n !== undefined ? Number(n).toFixed(1) + '%' : '—';
+  }
+  function pnlClass(v) {
+    return Number(v) >= 0 ? 'pnl-pos' : 'pnl-neg';
+  }
+  function pnlSign(v) {
+    const n = Number(v);
+    return (n >= 0 ? '+' : '') + n.toFixed(4);
+  }
+  function dirClass(dir) {
+    if (!dir) return '';
+    return dir.toLowerCase() === 'higher' ? 'green' : 'red';
+  }
+
+  // ── Main poll function ───────────────────────────────────────────────────────
+  async function refresh() {
+    let data;
+    try {
+      const resp = await fetch('/api/state');
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      data = await resp.json();
+    } catch (e) {
+      $('status-bar').textContent = 'Dashboard disconnected — retrying…';
+      return;
+    }
+
+    // ── Status bar ───────────────────────────────────────────────────────────
+    $('status-bar').textContent = data.status || '';
+
+    // ── Bankroll cards ───────────────────────────────────────────────────────
+    $('br-quarter').textContent = fmtDollar(data.bankroll_quarter_kelly);
+    $('br-half').textContent    = fmtDollar(data.bankroll_half_kelly);
+    $('br-full').textContent    = fmtDollar(data.bankroll_full_kelly);
+
+    // Colour the bankroll values vs starting $100
+    ['br-quarter', 'br-half', 'br-full'].forEach((id, i) => {
+      const val = [data.bankroll_quarter_kelly, data.bankroll_half_kelly, data.bankroll_full_kelly][i];
+      const el  = $(id);
+      el.classList.remove('green', 'orange', 'purple', 'red');
+      if      (i === 0) el.classList.add(val >= 100 ? 'green'  : 'red');
+      else if (i === 1) el.classList.add(val >= 100 ? 'orange' : 'red');
+      else              el.classList.add(val >= 100 ? 'purple' : 'red');
+    });
+
+    // ── Metadata cards ───────────────────────────────────────────────────────
+    $('win-rate').textContent   = data.total_trades > 0 ? fmtPct(data.win_rate) : '—';
+    $('wins-of').textContent    = `${data.wins} of ${data.total_trades} trades`;
+    $('implied-prob').textContent = data.total_trades > 0 ? fmtPct(data.implied_prob) : '—';
+    $('uptime').textContent       = data.uptime || '—';
+    $('total-trades').textContent = `${data.total_trades} total trades`;
+
+    // ── Win-rate bars ────────────────────────────────────────────────────────
+    const wr = data.win_rate || 0;
+    const ip = data.implied_prob || 0;
+    $('bar-wr').style.width  = Math.min(100, wr) + '%';
+    $('bar-ip').style.width  = Math.min(100, ip) + '%';
+    $('bar-wr-label').textContent = fmtPct(wr);
+    $('bar-ip-label').textContent = fmtPct(ip);
+
+    // ── Protection status ────────────────────────────────────────────────────
+    const prot = data.protection || {};
+    const ddPairs = [
+      ['dd-quarter', 'dd-quarter-status', prot.drawdown_quarter, prot.dd_blocked_quarter],
+      ['dd-half',    'dd-half-status',    prot.drawdown_half,    prot.dd_blocked_half],
+      ['dd-full',    'dd-full-status',    prot.drawdown_full,    prot.dd_blocked_full],
+    ];
+    ddPairs.forEach(([valId, subId, dd, blocked]) => {
+      const el = $(valId); const sub = $(subId);
+      el.textContent = dd !== undefined ? dd.toFixed(1) + '%' : '—';
+      el.className   = 'card-value ' + (blocked ? 'red' : dd > 15 ? 'orange' : 'green');
+      sub.textContent = blocked ? '🚫 BLOCKED' : 'Active';
+      sub.style.color = blocked ? '#f85149' : '#3fb950';
+    });
+
+    const anyBlocked = prot.dd_blocked_quarter || prot.dd_blocked_half || prot.dd_blocked_full || prot.consec_blocked;
+    const banner = $('protection-banner');
+    banner.style.display = anyBlocked ? 'block' : 'none';
+    if (anyBlocked) {
+      const parts = [];
+      if (prot.dd_blocked_quarter) parts.push('¼K drawdown >30%');
+      if (prot.dd_blocked_half)    parts.push('½K drawdown >30%');
+      if (prot.dd_blocked_full)    parts.push('K drawdown >30%');
+      if (prot.consec_blocked)     parts.push(`${prot.consecutive_losses} consecutive losses`);
+      $('protection-detail').textContent = parts.join(' · ');
+    }
+
+    // ── Current window panel ─────────────────────────────────────────────────
+    const cw = data.current_window || {};
+
+    $('win-start').textContent = cw.start_time || '—';
+
+    if (cw.signal_direction) {
+      const big = $('win-signal-big');
+      big.textContent  = cw.signal_direction.toUpperCase();
+      big.style.color  = cw.signal_direction === 'higher' ? '#3fb950' : '#f85149';
+      $('win-signal-sub').textContent = `Recorded @ ${cw.signal_time || ''}`;
+    } else {
+      $('win-signal-big').textContent  = '—';
+      $('win-signal-big').style.color  = '#8b949e';
+      $('win-signal-sub').textContent  = 'Waiting for 30s mark…';
+    }
+
+    $('win-poly').textContent   = cw.signal_polymarket_price ? cw.signal_polymarket_price.toFixed(4) : '—';
+    $('win-kelly').textContent  = data.full_kelly_fraction   ? (data.full_kelly_fraction * 100).toFixed(2) + '%' : '—';
+    $('win-source').textContent = cw.market_found === true ? 'Live Polymarket API' :
+                                  cw.market_found === false && cw.signal_direction ? 'Fallback avg (0.5886)' : '—';
+
+    // ── Chart update ─────────────────────────────────────────────────────────
+    const history = data.bankroll_history || [];
+    if (history.length > 0) {
+      chart.data.labels            = history.map(h => h.time);
+      chart.data.datasets[0].data  = history.map(h => h.quarter_kelly);
+      chart.data.datasets[1].data  = history.map(h => h.half_kelly);
+      chart.data.datasets[2].data  = history.map(h => h.full_kelly);
+      chart.update('none');  // 'none' = no animation on update (smoother)
+    }
+
+    // ── Trade log ────────────────────────────────────────────────────────────
+    const tbody = $('trade-tbody');
+    const trades = data.recent_trades || [];
+
+    if (trades.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;color:#8b949e;padding:24px;">
+        Waiting for the first completed trade…
+      </td></tr>`;
+    } else {
+      tbody.innerHTML = trades.map(t => {
+        const badge = t.won
+          ? '<span class="win-badge">WIN</span>'
+          : '<span class="loss-badge">LOSS</span>';
+        return `<tr>
+          <td>${t.timestamp}</td>
+          <td>$${Number(t.opening_btc).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+          <td class="${dirClass(t.signal_direction)}">${(t.signal_direction||'').toUpperCase()}</td>
+          <td class="${dirClass(t.polymarket_outcome)}">${(t.polymarket_outcome||'').toUpperCase()}</td>
+          <td>${fmt(t.polymarket_price, 4)}</td>
+          <td>${t.full_kelly_fraction !== undefined ? (t.full_kelly_fraction * 100).toFixed(2) + '%' : '—'}</td>
+          <td>${badge}</td>
+          <td class="${pnlClass(t.pnl_quarter_kelly)}">${pnlSign(t.pnl_quarter_kelly)}</td>
+          <td class="${pnlClass(t.pnl_half_kelly)}">${pnlSign(t.pnl_half_kelly)}</td>
+          <td class="${pnlClass(t.pnl_full_kelly)}">${pnlSign(t.pnl_full_kelly)}</td>
+          <td>${fmtDollar(t.bankroll_quarter_kelly)}</td>
+          <td>${fmtDollar(t.bankroll_half_kelly)}</td>
+          <td>${fmtDollar(t.bankroll_full_kelly)}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  // ── Live countdown ticker (updates every second, client-side) ───────────
+  function tickCountdown() {
+    const nowMs   = Date.now();
+    const elapsed = Math.floor((nowMs / 1000) % 300);
+    const remaining = 300 - elapsed;
+    const pct     = (elapsed / 300 * 100).toFixed(1);
+
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    $('win-elapsed').textContent = `${elapsed}s elapsed  ·  ${mins}:${secs.toString().padStart(2,'0')} left`;
+
+    const bar = $('win-progress-bar');
+    bar.style.width = pct + '%';
+    // Green → signal not yet taken; orange → signal taken, waiting for close; red → outcome time
+    bar.style.background = elapsed < 32 ? '#3fb950' : elapsed < 270 ? '#f0883e' : '#f85149';
+  }
+  tickCountdown();
+  setInterval(tickCountdown, 1000);
+
+  // ── Initial load + auto-refresh every 5 seconds ──────────────────────────
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>
