@@ -321,6 +321,7 @@ def get_clob_client():
             host="https://clob.polymarket.com",
             key=POLY_PRIVATE_KEY,
             chain_id=POLYGON,
+            signature_type=1,   # proxy wallet (Polymarket default)
         )
         creds = client.create_or_derive_api_creds()
         client.set_api_creds(creds)
@@ -395,8 +396,9 @@ def get_live_usdc_balance() -> float:
     """
     try:
         from py_clob_client.clob_types import BalanceAllowanceParams, AssetType  # noqa: PLC0415
-        resp    = get_clob_client().get_balance_allowance(params=BalanceAllowanceParams(asset_type=AssetType.COLLATERAL))
-        balance = float(resp.get("balance", 0) or 0)
+        resp    = get_clob_client().get_balance_allowance(params=BalanceAllowanceParams(asset_type=AssetType.COLLATERAL, signature_type=1))
+        raw = float(resp.get("balance", 0) or 0)
+        balance = raw / 1_000_000  # USDC has 6 decimals
         if balance > 0:
             log.info(f"LIVE: wallet balance ${balance:.2f} USDC")
             return round(balance, 2)
