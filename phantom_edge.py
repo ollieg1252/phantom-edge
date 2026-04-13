@@ -84,67 +84,47 @@ POLYMARKET_FEE    = 0.02     # Polymarket charges 2% fee on net profits
 STARTING_BANKROLL = 100.0    # Starting bankroll (dollars) for each strategy
 FALLBACK_PRICE    = 0.5886   # Historical average Polymarket price (used if API unavailable)
 
-# 2D p_win table: (price_bucket, delta_bucket) → blended win probability
-# Derived from 359 live windows collected by this app.
-# Bayesian blend: (live_wr × n + 0.636 × 30) / (n + 30) — smooths sparse cells.
+# Empirical p_win curve — derived from 5,017 windows of Polymarket data.
+# Bayesian blend: (live_wr × n + 0.636 × 30) / (n + 30)
+# Each tuple: (min_price, max_price, blended_p_win)
 #
-# Price buckets (Polymarket price of signal direction at t=30s):
-#   0 → 0.500–0.575
-#   1 → 0.575–0.650
-#   2 → 0.650–1.000
-#
-# Delta buckets (signal-aligned BTC % move from open to t=30s):
-#   Signal-aligned delta = raw_delta × (+1 if HIGHER signal, −1 if LOWER signal)
-#   0 → against  (<−0.03%): BTC moving opposite to signal
-#   1 → flat     (±0.03%):  BTC essentially flat
-#   2 → with     (>+0.03%): BTC moving in signal direction
-#
-#  Price \ Delta  Against  Flat    With
-#  0.500–0.575    0.602    0.516   0.588
-#  0.575–0.650    0.658    0.571   0.615
-#  0.650–1.000    0.711    0.744   0.802
-PWIN_CURVE_2D = {
-    (0, 0): 0.602,  (0, 1): 0.516,  (0, 2): 0.588,
-    (1, 0): 0.658,  (1, 1): 0.571,  (1, 2): 0.615,
-    (2, 0): 0.711,  (2, 1): 0.744,  (2, 2): 0.802,
-}
+# Bucket        N     WR      Blended  Kelly@mid
+# 0.500–0.525   532   55.3%   0.557    8.2%
+# 0.525–0.550   427   54.6%   0.552    2.0%
+# 0.550–0.575   628   59.6%   0.597    6.9%
+# 0.575–0.600   391   65.5%   0.653   15.0%
+# 0.600–0.625   587   63.2%   0.632    3.9%
+# 0.625–0.650   334   61.4%   0.616    0.0%  (market price > edge)
+# 0.650–0.700   643   70.1%   0.698    5.9%
+# 0.700–0.750   407   72.0%   0.714    0.0%  (market price > edge)
+# 0.750–0.800   212   78.8%   0.769    0.0%
+# 0.800–1.000   126   93.7%   0.879    0.0%
+PWIN_CURVE = [
+    (0.500, 0.525, 0.557),
+    (0.525, 0.550, 0.552),
+    (0.550, 0.575, 0.597),
+    (0.575, 0.600, 0.653),
+    (0.600, 0.625, 0.632),
+    (0.625, 0.650, 0.616),
+    (0.650, 0.700, 0.698),
+    (0.700, 0.750, 0.714),
+    (0.750, 0.800, 0.769),
+    (0.800, 1.000, 0.879),
+]
 
-# Delta threshold (%) separating "flat" from directional buckets
-DELTA_THRESHOLD = 0.03
 
-
-def get_pwin_2d(poly_price: float, signal_aligned_delta: float) -> float:
+def get_pwin_from_poly_price(poly_price: float) -> float:
     """
-    Look up empirical win probability using both the Polymarket price and the
-    signal-aligned BTC momentum at t=30s.
-
-    signal_aligned_delta: (btc_at_30s - btc_open) / btc_open * 100,
-        sign-flipped for LOWER signals so positive always means "moving with
-        the signal direction".
-
-    Returns 0.0 if poly_price < 0.50 (should not happen in normal operation).
+    Look up empirical win probability from the signal direction's Polymarket price.
+    poly_price should always be >= 0.50 (we only signal the dominant outcome).
     """
     if poly_price < 0.50:
         log.warning(f"poly_price {poly_price:.4f} < 0.50 — signal is weaker outcome, skipping.")
         return 0.0
-
-    # Price bucket
-    if poly_price < 0.575:
-        pb = 0
-    elif poly_price < 0.650:
-        pb = 1
-    else:
-        pb = 2
-
-    # Delta bucket
-    if signal_aligned_delta < -DELTA_THRESHOLD:
-        db = 0  # against
-    elif signal_aligned_delta <= DELTA_THRESHOLD:
-        db = 1  # flat
-    else:
-        db = 2  # with
-
-    return PWIN_CURVE_2D[(pb, db)]
+    for lo, hi, p_win in PWIN_CURVE:
+        if lo <= poly_price < hi:
+            return p_win
+    return WIN_PROBABILITY
 
 
 def get_market_volume(market: Dict) -> Optional[float]:
@@ -1133,9 +1113,7 @@ def monitor_loop():
                             live_peak   = state.get("live_peak_bankroll", live_br)
                             live_consec = state.get("live_consecutive_losses", 0)
 
-                        raw_delta   = (current_price - opening_price) / opening_price * 100 if opening_price else 0.0
-                        sig_delta   = raw_delta if direction == "higher" else -raw_delta
-                        p_win_live  = get_pwin_2d(poly_price, sig_delta)
+                        p_win_live  = get_pwin_from_poly_price(poly_price)
                         f_live      = calculate_kelly_fraction(p_win_live, poly_price)
                         stake_raw   = live_br * f_live * LIVE_KELLY_MULT if f_live > 0 else 0.0
                         stake_usdc  = min(stake_raw, MAX_LIVE_STAKE)
@@ -1302,8 +1280,7 @@ def monitor_loop():
                     # Flip sign for LOWER signals so positive always means "with the signal"
                     signal_aligned_delta = price_delta_pct if signal_dir == "higher" else -price_delta_pct
 
-                    # 2D p_win: bucketed by Polymarket price AND signal-aligned BTC momentum
-                    p_win_empirical = get_pwin_2d(poly_price, signal_aligned_delta)
+                    p_win_empirical = get_pwin_from_poly_price(poly_price)
                     f_full = calculate_kelly_fraction(p_win_empirical, poly_price)
                     edge_positive = f_full > 0
 
