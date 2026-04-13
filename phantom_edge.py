@@ -186,7 +186,8 @@ MAX_LIVE_STAKE   = 50.00    # Hard cap per order regardless of Kelly sizing
 # Credentials — NEVER hardcode keys here. Only one env var needed:
 #   export POLY_PRIVATE_KEY="0x..."   # private key of your Polygon wallet
 # API key/secret/passphrase are derived automatically from the private key.
-POLY_PRIVATE_KEY = os.environ.get("POLY_PRIVATE_KEY", "")
+POLY_PRIVATE_KEY    = os.environ.get("POLY_PRIVATE_KEY", "")
+POLY_PROXY_WALLET   = os.environ.get("POLY_PROXY_WALLET", "")
 
 WINDOW_MINUTES    = 5        # Each Polymarket BTC market window = 5 minutes
 SIGNAL_SECONDS    = 30       # We record our signal at this many seconds into the window
@@ -317,14 +318,12 @@ def get_clob_client():
         if not POLY_PRIVATE_KEY:
             raise RuntimeError("POLY_PRIVATE_KEY env var not set")
         # Initialise without creds first, then derive L2 API creds from the private key
-        from eth_account import Account  # noqa: PLC0415
-        funder = Account.from_key(POLY_PRIVATE_KEY).address
         client = ClobClient(
             host="https://clob.polymarket.com",
             key=POLY_PRIVATE_KEY,
             chain_id=POLYGON,
             signature_type=1,   # proxy wallet (Polymarket default)
-            funder=funder,
+            funder=POLY_PROXY_WALLET,
         )
         creds = client.create_or_derive_api_creds()
         client.set_api_creds(creds)
